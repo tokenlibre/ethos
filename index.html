@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="es">
 <head>
 <meta charset="utf-8" />
@@ -20,54 +21,52 @@
 <main class="wrap">
   <section class="card">
     <h3>Usuarios</h3>
-    <form id="formUser"><input id="userName" placeholder="@usuario" required><button class="btn-ok">Añadir</button></form>
+    <form id="formUser"><input id="userName" placeholder="@usuario"><button class="btn-ok">Añadir</button></form>
     <div id="userList"></div>
   </section>
   <section class="card">
-    <h3>Enlaces (A ➜ B)</h3>
-    <form id="formEdge"><select id="fromUser" required></select> ➜ <select id="toUser" required></select><button class="btn-ok">Crear</button></form>
+    <h3>Enlaces</h3>
+    <form id="formEdge"><select id="fromUser"></select> ➜ <select id="toUser"></select><button class="btn-ok">Crear</button></form>
     <div id="edgeTableWrap"></div>
   </section>
   <section class="card">
     <h3>Consulta</h3>
-    <div><select id="focusUser" multiple size="6" style="min-width:240px"></select> <button class="btn" id="btnAnalyze">Analizar</button></div>
+    <div><select id="focusUser" multiple size="4"></select><button class="btn" id="btnAnalyze">Analizar</button></div>
     <div id="analysis"></div>
   </section>
 </main>
 <script>
-// ✅ Tu API de Google Apps Script con /exec
-const API_URL = 'https://script.google.com/macros/s/AKfycbwDkMZoisVe8wBuPBP_wO4ZN0pDCJtJN32WhB_TQy4Uc3V9iVIIQbFNUBnGxBjpX7vaSw/exec';
+// Conectado a tu API de Google Apps Script
+const API_URL = 'https://script.google.com/macros/s/AKfycbwDkMZoisVe8wBuPBP_wO4ZN0pDCJtJN32WhB_TQy4Uc3V9iVIIQbFNUBnGxBjpX7vaSw/exec'; // vGET-only
 
-const $=s=>document.querySelector(s);
-let state={users:[],edges:[]};
+const \$=s=>document.querySelector(s);
+let state={users:\[],edges:\[]};
 
 async function apiGet(action='getState'){
-  const u = new URL(API_URL);
-  u.searchParams.set('action', action);
-  const res = await fetch(u.toString(), { method:'GET' });
-  if(!res.ok) throw new Error('HTTP '+res.status);
-  const json = await res.json();
-  if(!json.ok) throw new Error(json.error||'GET error');
-  return json;
+const u = new URL(API\_URL);
+u.searchParams.set('action', action);
+const res = await fetch(u.toString(), { method:'GET' });
+const json = await res.json();
+if(!json.ok) throw new Error(json.error||'GET error');
+return json;
 }
-
-async function apiPost(action, payload={}){
-  const res = await fetch(API_URL, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({action, ...payload})
-  });
-  if(!res.ok) throw new Error('HTTP '+res.status);
-  const json = await res.json();
-  if(!json.ok) throw new Error(json.error||'POST error');
-  return json;
+// ⚠️ Para evitar CORS/preflight, usamos SOLO GET en el frontend
+async function apiCallGET(action, params={}){
+const u = new URL(API\_URL);
+u.searchParams.set('action', action);
+Object.entries(params).forEach((\[k,v])=> u.searchParams.set(k, v));
+const res = await fetch(u.toString(), { method:'GET' });
+if(!res.ok) throw new Error('HTTP '+res.status+' '+res.statusText);
+const json = await res.json();
+if(!json.ok) throw new Error(json.error||'API error');
+return json;
 }
 
 async function loadState(){
-  const data = await apiGet('getState');
-  state.users = data.users||[];
-  state.edges = data.edges||[];
-  renderUsers(); renderEdges(); fillSelects();
+const data = await apiGet('getState');
+state.users = data.users||\[];
+state.edges = data.edges||\[];
+renderUsers(); renderEdges(); fillSelects();
 }
 
 function hasEdge(a,b){ return state.edges.some(e=>e.from===a && e.to===b); }
@@ -75,48 +74,27 @@ function hasAnyRelation(a,b){ return hasEdge(a,b) || hasEdge(b,a); }
 function outNeighbors(u){ return state.edges.filter(e=>e.from===u).map(e=>e.to); }
 function inNeighbors(u){ return state.edges.filter(e=>e.to===u).map(e=>e.from); }
 
-function renderUsers(){ $('#userList').innerHTML=state.users.map(u=>`<span class="mono">${u}</span> <button onclick="removeUser('${u}')">x</button>`).join(' '); }
-function renderEdges(){ $('#edgeTableWrap').innerHTML=state.edges.map(e=>`<div class="mono">${e.from} ➜ ${e.to} <button onclick=\"removeEdge('${e.from}','${e.to}')\">x</button></div>`).join('')||'<div class="mono">(sin enlaces)</div>'; }
-function fillSelects(){ ['fromUser','toUser','focusUser'].forEach(id=>{$('#'+id).innerHTML=state.users.map(u=>`<option value=\"${u}\">${u}</option>`).join('');}); }
+function renderUsers(){ \$('#userList').innerHTML=state.users.map(u=>`<span class="mono">${u}</span> <button onclick="removeUser('${u}')">x</button>`).join(' '); }
+function renderEdges(){ \$('#edgeTableWrap').innerHTML=state.edges.map(e=>`<div class="mono">${e.from} ➜ ${e.to} <button onclick=\"removeEdge('${e.from}','${e.to}')\">x</button></div>`).join('')||'<div class="mono">(sin enlaces)</div>'; }
+function fillSelects(){ \['fromUser','toUser','focusUser'].forEach(id=>{\$('#'+id).innerHTML=state.users.map(u=>`<option value=\"${u}\">${u}</option>`).join('');}); }
 
-function norm(u){ u=(u||'').trim(); if(!u) return ''; if(!u.startsWith('@')) u='@'+u; return u.toLowerCase(); }
-
-async function ensureUser(u){ u=norm(u); if(!u) return; await apiPost('addUser',{user:u}); await loadState(); }
-async function addEdge(a,b){ a=norm(a); b=norm(b); if(!a||!b) return; await apiPost('addEdge',{from:a,to:b}); await loadState(); }
-async function removeUser(u){ await apiPost('removeUser',{user:u}); await loadState(); }
-async function removeEdge(a,b){ await apiPost('removeEdge',{from:a,to:b}); await loadState(); }
+async function ensureUser(u){ u=norm(u); if(!u) return; await apiCallGET('addUser',{user\:u}); await loadState(); }
+async function addEdge(a,b){ a=norm(a); b=norm(b); if(!a||!b) return; await apiCallGET('addEdge',{from\:a,to\:b}); await loadState(); }
+async function removeUser(u){ await apiCallGET('removeUser',{user\:u}); await loadState(); }
+async function removeEdge(a,b){ await apiCallGET('removeEdge',{from\:a,to\:b}); await loadState(); }
 
 function candidatePartners(u){ return state.users.filter(v=> v!==u && !hasAnyRelation(u,v)); }
 
-function analyze(){
-  const sel=Array.from($('#focusUser').selectedOptions).map(o=>o.value);
-  $('#analysis').innerHTML='';
-  sel.forEach(u=>{
-    $('#analysis').innerHTML+=`<h4>${u}</h4>
-    <div>
-      Ha escrito a: ${outNeighbors(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}<br>
-      Ha recibido de: ${inNeighbors(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}<br>
-      <b>Puede interactuar con:</b> ${candidatePartners(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}
-    </div>`;
-  });
-}
+function analyze(){ const sel=Array.from(\$('#focusUser').selectedOptions).map(o=>o.value); \$('#analysis').innerHTML=''; sel.forEach(u=>{ \$('#analysis').innerHTML+=`<h4>${u}</h4><div>Ha escrito a: ${outNeighbors(u).map(x=>`\<span class="chip">\${x}</span>`).join(' ')||'(ninguno)'}<br>Ha recibido de: ${inNeighbors(u).map(x=>`\<span class="chip">\${x}</span>`).join(' ')||'(ninguno)'}<br><b>Puede interactuar con:</b> ${candidatePartners(u).map(x=>`\<span class="chip">\${x}</span>`).join(' ')||'(ninguno)'}</div>`; }); }
 
-$('#formUser').addEventListener('submit',async e=>{
-  e.preventDefault();
-  const v=$('#userName').value;
-  $('#userName').value='';
-  try{ await ensureUser(v);}catch(err){ alert(err.message); }
-});
+\$('#formUser').addEventListener('submit',async e=>{e.preventDefault();const v=\$('#userName').value; \$('#userName').value=''; try{ await ensureUser(v);}catch(err){ alert(err.message); }});
+\$('#formEdge').addEventListener('submit',async e=>{e.preventDefault(); try{ await addEdge(\$('#fromUser').value,\$('#toUser').value);}catch(err){ alert(err.message); }});
+\$('#btnAnalyze').addEventListener('click',analyze);
 
-$('#formEdge').addEventListener('submit',async e=>{
-  e.preventDefault();
-  try{ await addEdge($('#fromUser').value,$('#toUser').value);}catch(err){ alert(err.message); }
-});
+loadState(); </script>
 
-$('#btnAnalyze').addEventListener('click',analyze);
-
-loadState();
-</script>
 </body>
+</html>
+
 </html>
 
