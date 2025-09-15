@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Triangulador · No Recíproco (Sheets)</title>
+<title>Triangulador · No Recíproco (Google Sheets)</title>
 <style>
   body{margin:0;background:#0b1220;color:#e5e7eb;font:15px system-ui}
   .wrap{max-width:1000px;margin:0 auto;padding:16px}
@@ -35,7 +35,7 @@
   </section>
 </main>
 <script>
-// ✅ Tu API de Google Apps Script (con /exec)
+// ✅ Tu API de Google Apps Script con /exec
 const API_URL = 'https://script.google.com/macros/s/AKfycbwDkMZoisVe8wBuPBP_wO4ZN0pDCJtJN32WhB_TQy4Uc3V9iVIIQbFNUBnGxBjpX7vaSw/exec';
 
 const $=s=>document.querySelector(s);
@@ -45,16 +45,19 @@ async function apiGet(action='getState'){
   const u = new URL(API_URL);
   u.searchParams.set('action', action);
   const res = await fetch(u.toString(), { method:'GET' });
+  if(!res.ok) throw new Error('HTTP '+res.status);
   const json = await res.json();
   if(!json.ok) throw new Error(json.error||'GET error');
   return json;
 }
+
 async function apiPost(action, payload={}){
   const res = await fetch(API_URL, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({action, ...payload})
   });
+  if(!res.ok) throw new Error('HTTP '+res.status);
   const json = await res.json();
   if(!json.ok) throw new Error(json.error||'POST error');
   return json;
@@ -85,13 +88,35 @@ async function removeEdge(a,b){ await apiPost('removeEdge',{from:a,to:b}); await
 
 function candidatePartners(u){ return state.users.filter(v=> v!==u && !hasAnyRelation(u,v)); }
 
-function analyze(){ const sel=Array.from($('#focusUser').selectedOptions).map(o=>o.value); $('#analysis').innerHTML=''; sel.forEach(u=>{ $('#analysis').innerHTML+=`<h4>${u}</h4><div>Ha escrito a: ${outNeighbors(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}<br>Ha recibido de: ${inNeighbors(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}<br><b>Puede interactuar con:</b> ${candidatePartners(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'} </div>`; }); }
+function analyze(){
+  const sel=Array.from($('#focusUser').selectedOptions).map(o=>o.value);
+  $('#analysis').innerHTML='';
+  sel.forEach(u=>{
+    $('#analysis').innerHTML+=`<h4>${u}</h4>
+    <div>
+      Ha escrito a: ${outNeighbors(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}<br>
+      Ha recibido de: ${inNeighbors(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}<br>
+      <b>Puede interactuar con:</b> ${candidatePartners(u).map(x=>`<span class=\"chip\">${x}</span>`).join(' ')||'(ninguno)'}
+    </div>`;
+  });
+}
 
-$('#formUser').addEventListener('submit',async e=>{e.preventDefault();const v=$('#userName').value; $('#userName').value=''; try{ await ensureUser(v);}catch(err){ alert(err.message); }});
-$('#formEdge').addEventListener('submit',async e=>{e.preventDefault(); try{ await addEdge($('#fromUser').value,$('#toUser').value);}catch(err){ alert(err.message); }});
+$('#formUser').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const v=$('#userName').value;
+  $('#userName').value='';
+  try{ await ensureUser(v);}catch(err){ alert(err.message); }
+});
+
+$('#formEdge').addEventListener('submit',async e=>{
+  e.preventDefault();
+  try{ await addEdge($('#fromUser').value,$('#toUser').value);}catch(err){ alert(err.message); }
+});
+
 $('#btnAnalyze').addEventListener('click',analyze);
 
 loadState();
 </script>
 </body>
 </html>
+
