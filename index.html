@@ -13,6 +13,9 @@
   .btn-ok{background:#0f2b23}
   .mono{font-family:monospace}
   .chip{display:inline-block;margin:2px 6px 2px 0;padding:4px 8px;border:1px solid #1c2b3c;border-radius:999px;font-size:12px}
+  .muted{color:#9fb0c2}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  details summary{cursor:pointer}
 </style>
 </head>
 <body>
@@ -20,26 +23,53 @@
 <main class="wrap">
   <section class="card">
     <h3>Usuarios</h3>
-    <form id="formUser"><input id="userName" placeholder="@usuario" required><button class="btn-ok">Añadir</button></form>
-    <div id="userList"></div>
+    <form id="formUser" class="row">
+      <input id="userName" placeholder="@usuario" required>
+      <button class="btn-ok">Añadir</button>
+    </form>
+    <div id="userStats" class="muted" style="margin-top:6px">
+      Total de usuarios insertados: <b><span id="userCount">0</span></b>
+    </div>
+    <div id="userList" style="margin-top:8px"></div>
   </section>
+
   <section class="card">
-    <h3>Enlaces (A ➜ B)</h3>
-    <form id="formEdge"><select id="fromUser" required></select> ➜ <select id="toUser" required></select><button class="btn-ok">Crear</button></form>
-    <div id="edgeTableWrap"></div>
+    <h3>Enlaces (parejas ⇄ y buscador)</h3>
+
+    <form id="formEdge" class="row" style="margin-bottom:8px">
+      <select id="fromUser" required></select> ⇄ <select id="toUser" required></select>
+      <button class="btn-ok">Crear</button>
+    </form>
+
+    <div class="row" style="margin-bottom:8px">
+      <label for="searchUser" class="muted">Búsqueda por usuario:</label>
+      <select id="searchUser" style="min-width:220px"></select>
+      <button class="btn" id="btnSearch">Buscar</button>
+    </div>
+    <div id="searchResults" class="muted">(elige un usuario y pulsa “Buscar”)</div>
+
+    <details style="margin-top:12px">
+      <summary class="muted">Mostrar todas las parejas registradas (opcional)</summary>
+      <div id="edgeTableWrap" style="margin-top:8px"></div>
+    </details>
   </section>
+
   <section class="card">
-    <h3>Consulta</h3>
-    <div><select id="focusUser" multiple size="6" style="min-width:240px"></select> <button class="btn" id="btnAnalyze">Analizar</button></div>
-    <div id="analysis"></div>
+    <h3>Consulta: con quién has interactuado y con quién aún no</h3>
+    <div class="row">
+      <select id="focusUser" multiple size="6" style="min-width:240px;flex:1"></select>
+      <button class="btn" id="btnAnalyze">Analizar</button>
+    </div>
+    <div id="analysis" style="margin-top:8px"></div>
   </section>
 </main>
 
 <!-- Supabase JS (v2) -->
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
-const SUPABASE_URL = 'https://xlgejufrchzrjwsqbosw.supabase.co';          // ej: https://abcd.supabase.co
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZ2VqdWZyY2h6cmp3c3Fib3N3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwNDMyNjEsImV4cCI6MjA3MzYxOTI2MX0.v9FKgKQZ4_v3D4f_uLFhpMlOR6v578d91bU_HvR05_s';  // desde Settings → API
+// ⚙️ Configura tu proyecto Supabase:
+const SUPABASE_URL = 'PEGAR_AQUI_TU_PROJECT_URL';          // ej: https://abcd.supabase.co
+const SUPABASE_ANON_KEY = 'PEGAR_AQUI_TU_ANON_PUBLIC_KEY';  // desde Settings → API
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const $ = s => document.querySelector(s);
@@ -68,17 +98,28 @@ function outNeighbors(u){ return state.edges.filter(e => e.from===u).map(e => e.
 function inNeighbors(u){ return state.edges.filter(e => e.to===u).map(e => e.from); }
 
 function renderUsers(){
+  $('#userCount').textContent = state.users.length;
   $('#userList').innerHTML = state.users
     .map(u => `<span class="mono">${u}</span> <button onclick="removeUser('${u}')">x</button>`)
     .join(' ');
 }
+
+// 👉 mostramos parejas únicas como A ⇄ B
 function renderEdges(){
-  $('#edgeTableWrap').innerHTML = state.edges
-    .map(e => `<div class="mono">${e.from} ➜ ${e.to} <button onclick="removeEdge('${e.from}','${e.to}')">x</button></div>`)
-    .join('') || '<div class="mono">(sin enlaces)</div>';
+  const pairs = new Map(); // key = a|b (ordenados)
+  state.edges.forEach(e => {
+    const a = e.from, b = e.to;
+    const [x,y] = [a,b].sort();
+    pairs.set(`${x}|${y}`, {a:x, b:y});
+  });
+  const all = Array.from(pairs.values())
+    .map(p => `<div class="mono">${p.a} ⇄ ${p.b} <button onclick="removePair('${p.a}','${p.b}')">x</button></div>`)
+    .join('');
+  $('#edgeTableWrap').innerHTML = all || '<div class="mono">(sin enlaces)</div>';
 }
+
 function fillSelects(){
-  ['fromUser','toUser','focusUser'].forEach(id => {
+  ['fromUser','toUser','focusUser','searchUser'].forEach(id => {
     const el = $('#'+id);
     if(!el) return;
     el.innerHTML = state.users.map(u => `<option value="${u}">${u}</option>`).join('');
@@ -87,17 +128,19 @@ function fillSelects(){
 
 async function ensureUser(u){
   u = norm(u); if(!u) return;
-  const { error } = await supabase.from('users').upsert([{ handle: u }], { onConflict: 'handle' });
-  if(error) throw error;
+  // INSERT ignorando duplicados (no requiere policy UPDATE)
+  const { error } = await supabase
+    .from('users')
+    .insert({ handle: u }, { ignoreDuplicates: true });
+  if(error && error.code !== '23505') throw error;
 }
 
 async function addEdge(a,b){
   a = norm(a); b = norm(b); if(!a || !b) return;
-  // asegúrate de que existen los usuarios (FK)
+  if(a === b){ alert('No se permiten bucles A⇄A'); return; }
   await ensureUser(a); await ensureUser(b);
   const { error } = await supabase.from('edges').insert({ from: a, to: b });
   if(error){
-    // 23505 = unique_violation (duplicado o recíproco debido al índice ux_edges_unordered_pair)
     if(error.code === '23505') alert('Ya existe relación para esa pareja (en esta u otra dirección).');
     else alert(error.message || 'Error al crear el enlace');
     return;
@@ -110,6 +153,15 @@ async function removeUser(u){
   if(error) return alert(error.message);
   await loadState();
 }
+
+// Borrar pareja única (si existiera en una dirección u otra)
+async function removePair(a,b){
+  const { error: e1 } = await supabase.from('edges').delete().eq('from', a).eq('to', b);
+  const { error: e2 } = await supabase.from('edges').delete().eq('from', b).eq('to', a);
+  if(e1 && e2) return alert((e1 && e1.message) || (e2 && e2.message));
+  await loadState();
+}
+
 async function removeEdge(a,b){
   const { error } = await supabase.from('edges').delete().eq('from', a).eq('to', b);
   if(error) return alert(error.message);
@@ -127,11 +179,22 @@ function analyze(){
     $('#analysis').innerHTML += `
       <h4>${u}</h4>
       <div>
-        Ha escrito a: ${outNeighbors(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(ninguno)'}<br>
-        Ha recibido de: ${inNeighbors(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(ninguno)'}<br>
-        <b>Puede interactuar con:</b> ${candidatePartners(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(ninguno)'}
+        Ha interactuado con (ha escrito a): ${outNeighbors(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(nadie)'}<br>
+        Ha interactuado con (ha recibido de): ${inNeighbors(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(nadie)'}<br>
+        <b>Aún no ha interactuado con:</b> ${candidatePartners(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(nadie)'}
       </div>`;
   });
+}
+
+function searchByUser(){
+  const u = $('#searchUser').value;
+  if(!u){ $('#searchResults').innerHTML = '(elige un usuario)'; return; }
+  const outs = outNeighbors(u);
+  const inns = inNeighbors(u);
+  $('#searchResults').innerHTML = `
+    <div>Ha escrito a: ${outs.map(x => `<span class="chip">${x}</span>`).join(' ') || '(nadie)'}</div>
+    <div>Ha recibido de: ${inns.map(x => `<span class="chip">${x}</span>`).join(' ') || '(nadie)'}</div>
+  `;
 }
 
 $('#formUser').addEventListener('submit', async e => {
@@ -145,11 +208,14 @@ $('#formEdge').addEventListener('submit', async e => {
   try { await addEdge($('#fromUser').value, $('#toUser').value); } catch(err){ alert(err.message); }
 });
 $('#btnAnalyze').addEventListener('click', analyze);
+$('#btnSearch').addEventListener('click', e => { e.preventDefault(); searchByUser(); });
 
+// Carga inicial
 loadState();
 </script>
 </body>
 </html>
+
 
 </html>
 
