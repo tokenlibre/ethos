@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Triangulador · No Recíproco (Google Sheets)</title>
+<title>Triangulador · No Recíproco (Supabase)</title>
 <style>
   body{margin:0;background:#0b1220;color:#e5e7eb;font:15px system-ui}
   .wrap{max-width:1000px;margin:0 auto;padding:16px}
@@ -17,82 +16,138 @@
 </style>
 </head>
 <body>
-<header class="wrap"><h1>🔺 Triangulador (no recíproco) — Google Sheets</h1></header>
+<header class="wrap"><h1>🔺 Triangulador (no recíproco) — Supabase</h1></header>
 <main class="wrap">
   <section class="card">
     <h3>Usuarios</h3>
-    <form id="formUser"><input id="userName" placeholder="@usuario"><button class="btn-ok">Añadir</button></form>
+    <form id="formUser"><input id="userName" placeholder="@usuario" required><button class="btn-ok">Añadir</button></form>
     <div id="userList"></div>
   </section>
   <section class="card">
-    <h3>Enlaces</h3>
-    <form id="formEdge"><select id="fromUser"></select> ➜ <select id="toUser"></select><button class="btn-ok">Crear</button></form>
+    <h3>Enlaces (A ➜ B)</h3>
+    <form id="formEdge"><select id="fromUser" required></select> ➜ <select id="toUser" required></select><button class="btn-ok">Crear</button></form>
     <div id="edgeTableWrap"></div>
   </section>
   <section class="card">
     <h3>Consulta</h3>
-    <div><select id="focusUser" multiple size="4"></select><button class="btn" id="btnAnalyze">Analizar</button></div>
+    <div><select id="focusUser" multiple size="6" style="min-width:240px"></select> <button class="btn" id="btnAnalyze">Analizar</button></div>
     <div id="analysis"></div>
   </section>
 </main>
-<script>
-// Conectado a tu API de Google Apps Script
-const API_URL = 'https://script.google.com/macros/s/AKfycbyLPR6UxYh_AUQflZeS6lOYdzOGuqeVRxJX-VjFgqfJfCs2LhFf3Pmh5nqP84K9y-aZgg/exec'; // vGET-only
-//AKfycbyLPR6UxYh_AUQflZeS6lOYdzOGuqeVRxJX-VjFgqfJfCs2LhFf3Pmh5nqP84K9y-aZgg
-const \$=s=>document.querySelector(s);
-let state={users:\[],edges:\[]};
 
-async function apiGet(action='getState'){
-const u = new URL(API\_URL);
-u.searchParams.set('action', action);
-const res = await fetch(u.toString(), { method:'GET' });
-const json = await res.json();
-if(!json.ok) throw new Error(json.error||'GET error');
-return json;
-}
-// ⚠️ Para evitar CORS/preflight, usamos SOLO GET en el frontend
-async function apiCallGET(action, params={}){
-const u = new URL(API\_URL);
-u.searchParams.set('action', action);
-Object.entries(params).forEach((\[k,v])=> u.searchParams.set(k, v));
-const res = await fetch(u.toString(), { method:'GET' });
-if(!res.ok) throw new Error('HTTP '+res.status+' '+res.statusText);
-const json = await res.json();
-if(!json.ok) throw new Error(json.error||'API error');
-return json;
+<!-- Supabase JS (v2) -->
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://xlgejufrchzrjwsqbosw.supabase.co';          // ej: https://abcd.supabase.co
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZ2VqdWZyY2h6cmp3c3Fib3N3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwNDMyNjEsImV4cCI6MjA3MzYxOTI2MX0.v9FKgKQZ4_v3D4f_uLFhpMlOR6v578d91bU_HvR05_s';  // desde Settings → API
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const $ = s => document.querySelector(s);
+let state = { users: [], edges: [] };
+
+function norm(u){
+  u = (u || '').trim();
+  if(!u) return '';
+  if(!u.startsWith('@')) u = '@' + u;
+  return u.toLowerCase();
 }
 
 async function loadState(){
-const data = await apiGet('getState');
-state.users = data.users||\[];
-state.edges = data.edges||\[];
-renderUsers(); renderEdges(); fillSelects();
+  const { data: users, error: e1 } = await supabase.from('users').select('handle').order('handle');
+  if(e1) throw e1;
+  const { data: edges, error: e2 } = await supabase.from('edges').select('"from","to"').order('from');
+  if(e2) throw e2;
+  state.users = (users || []).map(r => r.handle);
+  state.edges = edges || [];
+  renderUsers(); renderEdges(); fillSelects();
 }
 
-function hasEdge(a,b){ return state.edges.some(e=>e.from===a && e.to===b); }
+function hasEdge(a,b){ return state.edges.some(e => e.from===a && e.to===b); }
 function hasAnyRelation(a,b){ return hasEdge(a,b) || hasEdge(b,a); }
-function outNeighbors(u){ return state.edges.filter(e=>e.from===u).map(e=>e.to); }
-function inNeighbors(u){ return state.edges.filter(e=>e.to===u).map(e=>e.from); }
+function outNeighbors(u){ return state.edges.filter(e => e.from===u).map(e => e.to); }
+function inNeighbors(u){ return state.edges.filter(e => e.to===u).map(e => e.from); }
 
-function renderUsers(){ \$('#userList').innerHTML=state.users.map(u=>`<span class="mono">${u}</span> <button onclick="removeUser('${u}')">x</button>`).join(' '); }
-function renderEdges(){ \$('#edgeTableWrap').innerHTML=state.edges.map(e=>`<div class="mono">${e.from} ➜ ${e.to} <button onclick=\"removeEdge('${e.from}','${e.to}')\">x</button></div>`).join('')||'<div class="mono">(sin enlaces)</div>'; }
-function fillSelects(){ \['fromUser','toUser','focusUser'].forEach(id=>{\$('#'+id).innerHTML=state.users.map(u=>`<option value=\"${u}\">${u}</option>`).join('');}); }
+function renderUsers(){
+  $('#userList').innerHTML = state.users
+    .map(u => `<span class="mono">${u}</span> <button onclick="removeUser('${u}')">x</button>`)
+    .join(' ');
+}
+function renderEdges(){
+  $('#edgeTableWrap').innerHTML = state.edges
+    .map(e => `<div class="mono">${e.from} ➜ ${e.to} <button onclick="removeEdge('${e.from}','${e.to}')">x</button></div>`)
+    .join('') || '<div class="mono">(sin enlaces)</div>';
+}
+function fillSelects(){
+  ['fromUser','toUser','focusUser'].forEach(id => {
+    const el = $('#'+id);
+    if(!el) return;
+    el.innerHTML = state.users.map(u => `<option value="${u}">${u}</option>`).join('');
+  });
+}
 
-async function ensureUser(u){ u=norm(u); if(!u) return; await apiCallGET('addUser',{user\:u}); await loadState(); }
-async function addEdge(a,b){ a=norm(a); b=norm(b); if(!a||!b) return; await apiCallGET('addEdge',{from\:a,to\:b}); await loadState(); }
-async function removeUser(u){ await apiCallGET('removeUser',{user\:u}); await loadState(); }
-async function removeEdge(a,b){ await apiCallGET('removeEdge',{from\:a,to\:b}); await loadState(); }
+async function ensureUser(u){
+  u = norm(u); if(!u) return;
+  const { error } = await supabase.from('users').upsert([{ handle: u }], { onConflict: 'handle' });
+  if(error) throw error;
+}
 
-function candidatePartners(u){ return state.users.filter(v=> v!==u && !hasAnyRelation(u,v)); }
+async function addEdge(a,b){
+  a = norm(a); b = norm(b); if(!a || !b) return;
+  // asegúrate de que existen los usuarios (FK)
+  await ensureUser(a); await ensureUser(b);
+  const { error } = await supabase.from('edges').insert({ from: a, to: b });
+  if(error){
+    // 23505 = unique_violation (duplicado o recíproco debido al índice ux_edges_unordered_pair)
+    if(error.code === '23505') alert('Ya existe relación para esa pareja (en esta u otra dirección).');
+    else alert(error.message || 'Error al crear el enlace');
+    return;
+  }
+  await loadState();
+}
 
-function analyze(){ const sel=Array.from(\$('#focusUser').selectedOptions).map(o=>o.value); \$('#analysis').innerHTML=''; sel.forEach(u=>{ \$('#analysis').innerHTML+=`<h4>${u}</h4><div>Ha escrito a: ${outNeighbors(u).map(x=>`\<span class="chip">\${x}</span>`).join(' ')||'(ninguno)'}<br>Ha recibido de: ${inNeighbors(u).map(x=>`\<span class="chip">\${x}</span>`).join(' ')||'(ninguno)'}<br><b>Puede interactuar con:</b> ${candidatePartners(u).map(x=>`\<span class="chip">\${x}</span>`).join(' ')||'(ninguno)'}</div>`; }); }
+async function removeUser(u){
+  const { error } = await supabase.from('users').delete().eq('handle', u);
+  if(error) return alert(error.message);
+  await loadState();
+}
+async function removeEdge(a,b){
+  const { error } = await supabase.from('edges').delete().eq('from', a).eq('to', b);
+  if(error) return alert(error.message);
+  await loadState();
+}
 
-\$('#formUser').addEventListener('submit',async e=>{e.preventDefault();const v=\$('#userName').value; \$('#userName').value=''; try{ await ensureUser(v);}catch(err){ alert(err.message); }});
-\$('#formEdge').addEventListener('submit',async e=>{e.preventDefault(); try{ await addEdge(\$('#fromUser').value,\$('#toUser').value);}catch(err){ alert(err.message); }});
-\$('#btnAnalyze').addEventListener('click',analyze);
+function candidatePartners(u){
+  return state.users.filter(v => v!==u && !hasAnyRelation(u,v));
+}
 
-loadState(); </script>
-hoooooooooooooooooooooooooooooooooooooooooooooola
+function analyze(){
+  const sel = Array.from($('#focusUser').selectedOptions).map(o => o.value);
+  $('#analysis').innerHTML = '';
+  sel.forEach(u => {
+    $('#analysis').innerHTML += `
+      <h4>${u}</h4>
+      <div>
+        Ha escrito a: ${outNeighbors(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(ninguno)'}<br>
+        Ha recibido de: ${inNeighbors(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(ninguno)'}<br>
+        <b>Puede interactuar con:</b> ${candidatePartners(u).map(x => `<span class="chip">${x}</span>`).join(' ') || '(ninguno)'}
+      </div>`;
+  });
+}
+
+$('#formUser').addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = $('#userName').value;
+  $('#userName').value = '';
+  try { await ensureUser(v); await loadState(); } catch(err){ alert(err.message); }
+});
+$('#formEdge').addEventListener('submit', async e => {
+  e.preventDefault();
+  try { await addEdge($('#fromUser').value, $('#toUser').value); } catch(err){ alert(err.message); }
+});
+$('#btnAnalyze').addEventListener('click', analyze);
+
+loadState();
+</script>
 </body>
 </html>
 
